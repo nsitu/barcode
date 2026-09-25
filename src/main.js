@@ -5,7 +5,7 @@ document.querySelector('#app').innerHTML = `
 <main class="app">
   <header><a href="/">BARCODE SCANNER</a></header>
   <section class="scanner">
-    <div class="camera-panel"><div class="camera-frame" id="camera-frame"><video id="video" autoplay muted playsinline></video><div class="scan-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="scan-line" aria-hidden="true"></div><div class="placeholder" id="placeholder"></div></div><div class="controls"><span id="status" class="status"></span><button id="start-button" class="button primary" type="button">START CAMERA</button></div></div>
+    <div class="camera-panel"><div class="camera-frame" id="camera-frame"><video id="video" autoplay muted playsinline></video><canvas id="freeze-frame" aria-hidden="true"></canvas><div class="scan-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="scan-line" aria-hidden="true"></div><div class="placeholder" id="placeholder"></div></div><div class="controls"><span id="status" class="status"></span><button id="start-button" class="button primary" type="button">START CAMERA</button></div></div>
     <aside class="result-panel"><p class="label">DETECTED VALUE</p><output id="result" aria-live="polite">—</output><p id="format" class="format">—</p></aside>
   </section>
 </main>`
@@ -14,6 +14,7 @@ const video = document.querySelector('#video')
 const startButton = document.querySelector('#start-button')
 const placeholder = document.querySelector('#placeholder')
 const cameraFrame = document.querySelector('#camera-frame')
+const freezeFrame = document.querySelector('#freeze-frame')
 const status = document.querySelector('#status')
 const result = document.querySelector('#result')
 const format = document.querySelector('#format')
@@ -22,6 +23,13 @@ let scanning = false
 let detector
 
 const setStatus = (value) => { status.textContent = value; status.classList.toggle('active', value === 'SCANNING') }
+const clearFreezeFrame = () => { freezeFrame.classList.remove('visible'); freezeFrame.width = 0; freezeFrame.height = 0 }
+const captureFreezeFrame = () => {
+  freezeFrame.width = video.videoWidth
+  freezeFrame.height = video.videoHeight
+  freezeFrame.getContext('2d').drawImage(video, 0, 0, freezeFrame.width, freezeFrame.height)
+  freezeFrame.classList.add('visible')
+}
 const scan = async () => {
   if (!scanning || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) { if (scanning) requestAnimationFrame(scan); return }
   try {
@@ -30,6 +38,7 @@ const scan = async () => {
       const detected = detections[0]
       result.textContent = detected.rawValue
       format.textContent = detected.format.replaceAll('_', ' ').toUpperCase()
+      captureFreezeFrame()
       scanning = false
       stream?.getTracks().forEach((track) => track.stop())
       video.srcObject = null
@@ -45,6 +54,7 @@ const scan = async () => {
 startButton.addEventListener('click', async () => {
   if (scanning) { scanning = false; stream?.getTracks().forEach((track) => track.stop()); video.srcObject = null; placeholder.hidden = false; cameraFrame.classList.remove('active'); startButton.textContent = 'START CAMERA'; setStatus(''); return }
   try {
+    clearFreezeFrame()
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
     video.srcObject = stream; await video.play(); detector ??= new BarcodeDetector(); scanning = true; placeholder.hidden = true; cameraFrame.classList.add('active'); startButton.textContent = 'STOP CAMERA'; setStatus('SCANNING'); result.textContent = '—'; format.textContent = '—'; requestAnimationFrame(scan)
   } catch (error) { console.error(error); result.textContent = 'ERROR'; format.textContent = error.name === 'NotAllowedError' ? 'ALLOW CAMERA ACCESS' : 'USE HTTPS OR LOCALHOST'; setStatus('ERROR') }
